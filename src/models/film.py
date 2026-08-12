@@ -1,7 +1,17 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from models.person import Person
 
 
 class Film(BaseModel):
     id: str
     title: str
-    description: str
+    description: str | None = None
+    imdb_rating: float | None = None
+    genres: list[str] = Field(default_factory=list)
+    actors: list[Person] = Field(default_factory=list)
+    directors: list[Person] = Field(default_factory=list)
+    writers: list[Person] = Field(default_factory=list)
+    actors_names: list[str] = Field(default_factory=list)
+    directors_names: list[str] = Field(default_factory=list)
+    writers_names: list[str] = Field(default_factory=list)
