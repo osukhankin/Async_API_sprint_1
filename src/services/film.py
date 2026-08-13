@@ -26,12 +26,63 @@ class FilmService:
             await self._put_film_to_cache(film)
         return film
 
+    async def get_films(
+        self,
+        page_number: int,
+        page_size: int,
+        sort: str,
+        genre: str | None = None,
+    ) -> list[Film]:
+        offset = (page_number - 1) * page_size
+        return await self._get_films_from_elastic(
+            from_=offset,
+            size=page_size,
+            sort=sort,
+            genre=genre,
+        )
+
     async def _get_film_from_elastic(self, film_id: str) -> Optional[Film]:
         try:
             doc = await self.elastic.get(index='movies', id=film_id)
         except NotFoundError:
             return None
         return Film(**doc['_source'])
+
+    async def _get_films_from_elastic(
+        self,
+        from_: int,
+        size: int,
+        sort: str,
+        genre: str | None = None,
+    ) -> list[Film]:
+        source_includes = ['id', 'title', 'imdb_rating']
+        docs = await self.elastic.search(
+            index='movies',
+            query=self._build_query(genre),
+            source_includes=source_includes,
+            from_=from_,
+            size=size,
+            sort=self._build_sort(sort),
+        )
+        return [Film(**hit['_source']) for hit in docs['hits']['hits']]
+
+    @staticmethod
+    def _build_query(genre: str | None) -> dict:
+        if not genre:
+            return {'match_all': {}}
+        return {
+            'bool': {
+                'filter': [
+                    {'term': {'genres': genre}},
+                ],
+            },
+        }
+
+    @staticmethod
+    def _build_sort(sort: str) -> list[dict]:
+        order = 'desc' if sort.startswith('-') else 'asc'
+        field = sort.lstrip('-')
+        return [{field: {'order': order}}]
 
     async def _film_from_cache(self, film_id: str) -> Optional[Film]:
         data = await self.redis.get(film_id)
