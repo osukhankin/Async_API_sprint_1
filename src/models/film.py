@@ -15,3 +15,9 @@ class Film(BaseModel):
     actors_names: list[str] = Field(default_factory=list)
     directors_names: list[str] = Field(default_factory=list)
     writers_names: list[str] = Field(default_factory=list)
+
+
+class FilmShort(BaseModel):
+    id: str
+    title: str
+    imdb_rating: float | None = None

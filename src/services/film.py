@@ -3,13 +3,15 @@ from typing import Optional
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from fastapi import Depends
+from pydantic import TypeAdapter
 from redis.asyncio import Redis
 
 from db.elastic import get_elastic
 from db.redis import get_redis
-from models.film import Film
+from models.film import Film, FilmShort
 
 FILM_CACHE_EXPIRE_IN_SECONDS = 60 * 5  # 5 минут
+FILMS_LIST_ADAPTER = TypeAdapter(list[FilmShort])
 
 
 class FilmService:
@@ -18,12 +20,16 @@ class FilmService:
         self.elastic = elastic
 
     async def get_by_id(self, film_id: str) -> Optional[Film]:
-        film = await self._film_from_cache(film_id)
+        cache_key = self._film_cache_key(film_id)
+        data = await self._get_cache(cache_key)
+        if data:
+            return Film.model_validate_json(data)
+
+        film = await self._get_film_from_elastic(film_id)
         if not film:
-            film = await self._get_film_from_elastic(film_id)
-            if not film:
-                return None
-            await self._put_film_to_cache(film)
+            return None
+
+        await self._set_cache(cache_key, film.model_dump_json())
         return film
 
     async def get_films(
@@ -32,14 +38,25 @@ class FilmService:
         page_size: int,
         sort: str,
         genre: str | None = None,
-    ) -> list[Film]:
-        offset = (page_number - 1) * page_size
-        return await self._get_films_from_elastic(
-            from_=offset,
+    ) -> list[FilmShort]:
+        cache_key = self._films_list_cache_key(
+            page_number=page_number,
+            page_size=page_size,
+            sort=sort,
+            genre=genre,
+        )
+        cached = await self._get_cache(cache_key)
+        if cached:
+            return FILMS_LIST_ADAPTER.validate_json(cached)
+
+        films = await self._get_films_from_elastic(
+            from_=(page_number - 1) * page_size,
             size=page_size,
             sort=sort,
             genre=genre,
         )
+        await self._set_cache(cache_key, FILMS_LIST_ADAPTER.dump_json(films))
+        return films
 
     async def _get_film_from_elastic(self, film_id: str) -> Optional[Film]:
         try:
@@ -54,7 +71,7 @@ class FilmService:
         size: int,
         sort: str,
         genre: str | None = None,
-    ) -> list[Film]:
+    ) -> list[FilmShort]:
         source_includes = ['id', 'title', 'imdb_rating']
         docs = await self.elastic.search(
             index='movies',
@@ -64,7 +81,7 @@ class FilmService:
             size=size,
             sort=self._build_sort(sort),
         )
-        return [Film(**hit['_source']) for hit in docs['hits']['hits']]
+        return [FilmShort(**hit['_source']) for hit in docs['hits']['hits']]
 
     @staticmethod
     def _build_query(genre: str | None) -> dict:
@@ -84,15 +101,29 @@ class FilmService:
         field = sort.lstrip('-')
         return [{field: {'order': order}}]
 
-    async def _film_from_cache(self, film_id: str) -> Optional[Film]:
-        data = await self.redis.get(film_id)
-        if not data:
-            return None
-        film = Film.model_validate_json(data)
-        return film
+    @staticmethod
+    def _film_cache_key(film_id: str) -> str:
+        return f'film:{film_id}'
 
-    async def _put_film_to_cache(self, film: Film):
-        await self.redis.set(film.id, film.model_dump_json(), FILM_CACHE_EXPIRE_IN_SECONDS)
+    @staticmethod
+    def _films_list_cache_key(
+        page_number: int,
+        page_size: int,
+        sort: str,
+        genre: str | None,
+    ) -> str:
+        return (
+            f'films:list:genre={genre or ""}'
+            f':sort={sort}'
+            f':page_number={page_number}'
+            f':page_size={page_size}'
+        )
+
+    async def _get_cache(self, key: str) -> bytes | None:
+        return await self.redis.get(key)
+
+    async def _set_cache(self, key: str, value: str | bytes) -> None:
+        await self.redis.set(key, value, FILM_CACHE_EXPIRE_IN_SECONDS)
 
 
 @lru_cache()
