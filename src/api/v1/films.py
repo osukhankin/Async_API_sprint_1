@@ -1,22 +1,22 @@
 from http import HTTPStatus
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from models.person import Person as PersonModel
-from models.genre import Genre as GenreModel
 from services.film import FilmService, get_film_service
 
 router = APIRouter(tags=['Фильмы'])
 
 
 class Person(BaseModel):
-    uuid: str
-    full_name: str
+    model_config = ConfigDict(from_attributes=True)
+    uuid: str = Field(validation_alias='id')
+    full_name: str = Field(validation_alias='name')
 
 
 class Genre(BaseModel):
-    uuid: str
+    model_config = ConfigDict(from_attributes=True)
+    uuid: str = Field(validation_alias='id')
     name: str
 
 
@@ -35,16 +35,6 @@ class FilmListItem(BaseModel):
     uuid: str
     title: str
     imdb_rating: float | None = None
-
-
-def _to_person_response(person: PersonModel) -> Person:
-    """Доменная Person (id) → API Person (uuid)."""
-    return Person(uuid=person.id, full_name=person.name)
-
-
-def _to_genre_response(genre: GenreModel) -> Genre:
-    """Доменная Genre (id) → API Genre (uuid)."""
-    return Genre(uuid=genre.id, name=genre.name)
 
 
 @router.get(
@@ -117,8 +107,8 @@ async def film_details(film_id: str, film_service: FilmService = Depends(get_fil
         title=film.title,
         description=film.description,
         imdb_rating=film.imdb_rating,
-        genre=[_to_genre_response(genre) for genre in film.genres],
-        actors=[_to_person_response(person) for person in film.actors],
-        directors=[_to_person_response(person) for person in film.directors],
-        writers=[_to_person_response(person) for person in film.writers],
+        genre=[Genre.model_validate(genre) for genre in film.genres],
+        actors=[Person.model_validate(person) for person in film.actors],
+        directors=[Person.model_validate(person) for person in film.directors],
+        writers=[Person.model_validate(person) for person in film.writers],
     )
