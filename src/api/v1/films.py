@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.person import Person as PersonModel
+from models.genre import Genre as GenreModel
 from services.film import FilmService, get_film_service
 
 router = APIRouter(tags=['Фильмы'])
@@ -14,12 +15,17 @@ class Person(BaseModel):
     full_name: str
 
 
+class Genre(BaseModel):
+    uuid: str
+    name: str
+
+
 class FilmResponse(BaseModel):
     uuid: str
     title: str
     description: str | None = None
     imdb_rating: float | None = None
-    genres: list[str] = Field(default_factory=list)
+    genre: list[Genre] = Field(default_factory=list)
     actors: list[Person] = Field(default_factory=list)
     directors: list[Person] = Field(default_factory=list)
     writers: list[Person] = Field(default_factory=list)
@@ -34,6 +40,11 @@ class FilmListItem(BaseModel):
 def _to_person_response(person: PersonModel) -> Person:
     """Доменная Person (id) → API Person (uuid)."""
     return Person(uuid=person.id, full_name=person.name)
+
+
+def _to_genre_response(genre: GenreModel) -> Genre:
+    """Доменная Genre (id) → API Genre (uuid)."""
+    return Genre(uuid=genre.id, name=genre.name)
 
 
 @router.get(
@@ -76,7 +87,7 @@ async def films_list(
     ),
     genre: str | None = Query(
         None,
-        description='Фильтр по жанру (точное совпадение, например Action)',
+        description='Фильтр по UUID жанра',
     ),
 ) -> list[FilmListItem]:
     items = await film_service.get_films(
@@ -106,7 +117,7 @@ async def film_details(film_id: str, film_service: FilmService = Depends(get_fil
         title=film.title,
         description=film.description,
         imdb_rating=film.imdb_rating,
-        genres=film.genres,
+        genre=[_to_genre_response(genre) for genre in film.genres],
         actors=[_to_person_response(person) for person in film.actors],
         directors=[_to_person_response(person) for person in film.directors],
         writers=[_to_person_response(person) for person in film.writers],
