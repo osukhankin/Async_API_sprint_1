@@ -1,40 +1,11 @@
 from http import HTTPStatus
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
 
+from schemas.film import FilmListItem, FilmResponse
 from services.film import FilmService, get_film_service
 
 router = APIRouter(tags=['Фильмы'])
-
-
-class Person(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    uuid: str = Field(validation_alias='id')
-    full_name: str = Field(validation_alias='name')
-
-
-class Genre(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    uuid: str = Field(validation_alias='id')
-    name: str
-
-
-class FilmResponse(BaseModel):
-    uuid: str
-    title: str
-    description: str | None = None
-    imdb_rating: float | None = None
-    genre: list[Genre] = Field(default_factory=list)
-    actors: list[Person] = Field(default_factory=list)
-    directors: list[Person] = Field(default_factory=list)
-    writers: list[Person] = Field(default_factory=list)
-
-
-class FilmListItem(BaseModel):
-    uuid: str
-    title: str
-    imdb_rating: float | None = None
 
 
 @router.get(
@@ -54,10 +25,7 @@ async def films_search(
         page_size=page_size,
         query=query,
     )
-    return [
-        FilmListItem(uuid=film.id, title=film.title, imdb_rating=film.imdb_rating)
-        for film in items
-    ]
+    return [FilmListItem.model_validate(film) for film in items]
 
 
 @router.get(
@@ -86,10 +54,7 @@ async def films_list(
         sort=sort,
         genre=genre,
     )
-    return [
-        FilmListItem(uuid=film.id, title=film.title, imdb_rating=film.imdb_rating)
-        for film in items
-    ]
+    return [FilmListItem.model_validate(film) for film in items]
 
 
 @router.get(
@@ -102,13 +67,4 @@ async def film_details(film_id: str, film_service: FilmService = Depends(get_fil
     film = await film_service.get_by_id(film_id)
     if not film:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail='film not found')
-    return FilmResponse(
-        uuid=film.id,
-        title=film.title,
-        description=film.description,
-        imdb_rating=film.imdb_rating,
-        genre=[Genre.model_validate(genre) for genre in film.genres],
-        actors=[Person.model_validate(person) for person in film.actors],
-        directors=[Person.model_validate(person) for person in film.directors],
-        writers=[Person.model_validate(person) for person in film.writers],
-    )
+    return FilmResponse.model_validate(film)

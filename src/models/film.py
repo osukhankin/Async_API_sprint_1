@@ -1,10 +1,11 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from models.genre import Genre
 from models.person import Person
 
 
 class Film(BaseModel):
+    model_config = ConfigDict(extra='ignore')
     id: str
     title: str
     description: str | None = None
@@ -13,9 +14,6 @@ class Film(BaseModel):
     actors: list[Person] = Field(default_factory=list)
     directors: list[Person] = Field(default_factory=list)
     writers: list[Person] = Field(default_factory=list)
-    actors_names: list[str] = Field(default_factory=list)
-    directors_names: list[str] = Field(default_factory=list)
-    writers_names: list[str] = Field(default_factory=list)
 
 
 class FilmShort(BaseModel):
