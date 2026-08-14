@@ -62,6 +62,11 @@ class Settings(BaseSettings):
         """Схема индекса genres для Elasticsearch."""
         return self._load_schema("es_genres_schema.json")
 
+    @property
+    def persons_schema(self) -> dict[str, Any]:
+        """Схема индекса persons для Elasticsearch."""
+        return self._load_schema("es_persons_schema.json")
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -81,6 +81,47 @@ class Transformer:
         return [Transformer.transform_genre(genre) for genre in genres]
 
     @staticmethod
+    def transform_person(person: dict[str, Any]) -> dict[str, Any]:
+        """
+        Преобразовать одну запись персоны в документ Elasticsearch.
+
+        Args:
+            person: Сырые данные персоны из Postgres.
+
+        Returns:
+            Документ для индекса persons (id, full_name, films).
+        """
+        films_by_id: dict[str, list[str]] = {}
+        for film in person.get("films") or []:
+            film_id = str(film["id"])
+            role = film["role"]
+            roles = films_by_id.setdefault(film_id, [])
+            if role not in roles:
+                roles.append(role)
+
+        return {
+            "id": str(person["id"]),
+            "full_name": person["full_name"],
+            "films": [
+                {"id": film_id, "roles": roles}
+                for film_id, roles in films_by_id.items()
+            ],
+        }
+
+    @staticmethod
+    def transform_persons_bulk(persons: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Преобразовать пачку персон в документы Elasticsearch.
+
+        Args:
+            persons: Список сырых записей из Postgres.
+
+        Returns:
+            Список документов для bulk-загрузки в ES.
+        """
+        return [Transformer.transform_person(person) for person in persons]
+
+    @staticmethod
     def _split_persons_by_role(
         persons: list[dict[str, Any]],
     ) -> dict[str, list[dict[str, str]]]:

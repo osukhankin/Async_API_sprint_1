@@ -32,7 +32,20 @@ class GenreExtractBatch:
 
     @property
     def has_changes(self) -> bool:
-        """Есть ли изменения по жанрам в фильмах."""
+        """Есть ли изменения по жанрам."""
+        return bool(self.state_updates)
+
+
+@dataclass(frozen=True)
+class PersonExtractBatch:
+    """Результат одной пачки инкрементальной выгрузки персон."""
+
+    person_ids: list[UUID] = field(default_factory=list)
+    state_updates: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def has_changes(self) -> bool:
+        """Есть ли изменения по персонам."""
         return bool(self.state_updates)
 
 
@@ -415,6 +428,76 @@ class PostgresExtractor:
             state_updates={
                 "genres_index_modified": max(
                     row["modified"] for row in modified_genres
+                ).isoformat(),
+            },
+        )
+
+    @backoff(before_retry=lambda self, *_a, **_k: self._reconnect())
+    def extract_persons_by_ids(
+        self,
+        person_ids: list[UUID],
+    ) -> list[dict[str, Any]]:
+        """
+        Получить полные данные персон для загрузки в Elasticsearch.
+
+        Берёт только персон, связанных хотя бы с одним фильмом.
+
+        Args:
+            person_ids: Идентификаторы персон.
+
+        Returns:
+            Список словарей с данными, достаточными для Transformer.
+        """
+        if not person_ids:
+            return []
+
+        query = """
+            SELECT
+                p.id,
+                p.full_name,
+                COALESCE(
+                    json_agg(DISTINCT jsonb_build_object(
+                        'id', pfw.film_work_id,
+                        'role', pfw.role
+                    )) FILTER (WHERE pfw.film_work_id IS NOT NULL),
+                    '[]'
+                ) AS films
+            FROM person AS p
+            INNER JOIN person_film_work AS pfw ON p.id = pfw.person_id
+            WHERE p.id = ANY(%s)
+            GROUP BY p.id;
+        """
+        with self.conn.cursor() as cursor:
+            cursor.execute(query, (list(person_ids),))
+            return cursor.fetchall()
+
+    def extract_changed_persons(
+        self,
+        persons_index_modified: str,
+        limit: int | None = None,
+    ) -> PersonExtractBatch:
+        """
+        Собрать пачку персон, затронутых изменениями в PG.
+
+        Args:
+            persons_index_modified: Курсор modified для индекса persons.
+            limit: Размер пачки; по умолчанию self.batch_size.
+
+        Returns:
+            PersonExtractBatch с person_ids и state_updates.
+        """
+        modified_persons = self.extract_modified_persons(
+            persons_index_modified,
+            limit=limit,
+        )
+        if not modified_persons:
+            return PersonExtractBatch()
+
+        return PersonExtractBatch(
+            person_ids=[row["id"] for row in modified_persons],
+            state_updates={
+                "persons_index_modified": max(
+                    row["modified"] for row in modified_persons
                 ).isoformat(),
             },
         )

@@ -74,22 +74,56 @@ def _load_genres(
         logger.info("Genre state updated: %s", list(batch.state_updates))
 
 
+def _load_persons(
+    extractor: PostgresExtractor,
+    loader: ElasticsearchLoader,
+    state: State,
+    batch_size: int,
+) -> None:
+    """Инкрементально загрузить изменённых персон в индекс persons."""
+    while True:
+        batch = extractor.extract_changed_persons(
+            persons_index_modified=state.get_state("persons_index_modified"),
+            limit=batch_size,
+        )
+        if not batch.has_changes:
+            logger.info("No more person changes to process")
+            break
+
+        logger.info("Persons to upsert: %s", len(batch.person_ids))
+        for offset in range(0, len(batch.person_ids), batch_size):
+            chunk_ids = batch.person_ids[offset:offset + batch_size]
+            persons = extractor.extract_persons_by_ids(chunk_ids)
+            if not persons:
+                continue
+            documents = Transformer.transform_persons_bulk(persons)
+            loader.bulk_load(documents)
+            logger.info("Loaded %s person documents to Elasticsearch", len(documents))
+
+        for key, value in batch.state_updates.items():
+            state.set_state(key, value)
+        logger.info("Person state updated: %s", list(batch.state_updates))
+
+
 def postgres_to_es() -> None:
     """Main process function."""
     settings = get_settings()
     extractor = PostgresExtractor(dsn=settings.dsl, batch_size=settings.batch_size)
     films_loader = ElasticsearchLoader(settings.es_url, index_name="movies")
     genres_loader = ElasticsearchLoader(settings.es_url, index_name="genres")
+    persons_loader = ElasticsearchLoader(settings.es_url, index_name="persons")
     state = State(JsonFileStorage(settings.state_file_path))
 
     logger.info("ETL iteration started")
-    with extractor, films_loader, genres_loader:
+    with extractor, films_loader, genres_loader, persons_loader:
         films_loader.create_index(settings.schema)
         genres_loader.create_index(settings.genres_schema)
+        persons_loader.create_index(settings.persons_schema)
         logger.info("Elasticsearch indexes are ready")
 
         _load_films(extractor, films_loader, state, settings.batch_size)
         _load_genres(extractor, genres_loader, state, settings.batch_size)
+        _load_persons(extractor, persons_loader, state, settings.batch_size)
 
     logger.info("ETL iteration finished")
 
