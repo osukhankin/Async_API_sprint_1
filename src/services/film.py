@@ -58,6 +58,29 @@ class FilmService:
         await self._set_cache(cache_key, FILMS_LIST_ADAPTER.dump_json(films))
         return films
 
+    async def search_films(
+        self,
+        page_number: int,
+        page_size: int,
+        query: str,
+    ) -> list[FilmShort]:
+        cache_key = self._films_search_cache_key(
+            page_number=page_number,
+            page_size=page_size,
+            query=query
+        )
+        cached = await self._get_cache(cache_key)
+        if cached:
+            return FILMS_LIST_ADAPTER.validate_json(cached)
+
+        films = await self._search_films_from_elastic(
+            from_=(page_number - 1) * page_size,
+            size=page_size,
+            query=query,
+        )
+        await self._set_cache(cache_key, FILMS_LIST_ADAPTER.dump_json(films))
+        return films
+
     async def _get_film_from_elastic(self, film_id: str) -> Optional[Film]:
         try:
             doc = await self.elastic.get(index='movies', id=film_id)
@@ -75,7 +98,7 @@ class FilmService:
         source_includes = ['id', 'title', 'imdb_rating']
         docs = await self.elastic.search(
             index='movies',
-            query=self._build_query(genre),
+            query=self._build_query(genre, query=None),
             source_includes=source_includes,
             from_=from_,
             size=size,
@@ -83,17 +106,41 @@ class FilmService:
         )
         return [FilmShort(**hit['_source']) for hit in docs['hits']['hits']]
 
+    async def _search_films_from_elastic(
+        self,
+        from_: int,
+        size: int,
+        query: str,
+    ) -> list[FilmShort]:
+        source_includes = ['id', 'title', 'imdb_rating']
+        docs = await self.elastic.search(
+            index='movies',
+            query=self._build_query(genre=None, query=query),
+            source_includes=source_includes,
+            from_=from_,
+            size=size,
+        )
+        return [FilmShort(**hit['_source']) for hit in docs['hits']['hits']]
+
     @staticmethod
-    def _build_query(genre: str | None) -> dict:
-        if not genre:
-            return {'match_all': {}}
-        return {
-            'bool': {
-                'filter': [
-                    {'term': {'genres': genre}},
-                ],
-            },
-        }
+    def _build_query(genre: str | None, query: str | None) -> dict:
+        if genre:
+            return {
+                'bool': {
+                    'filter': [
+                        {'term': {'genres': genre}},
+                    ],
+                },
+            }
+        if query:
+            return {
+                'multi_match': {
+                    'query': query,
+                    'fields': ['title', 'description'],
+                },
+            }
+        return {'match_all': {}}
+
 
     @staticmethod
     def _build_sort(sort: str) -> list[dict]:
@@ -115,6 +162,18 @@ class FilmService:
         return (
             f'films:list:genre={genre or ""}'
             f':sort={sort}'
+            f':page_number={page_number}'
+            f':page_size={page_size}'
+        )
+
+    @staticmethod
+    def _films_search_cache_key(
+        page_number: int,
+        page_size: int,
+        query: str,
+    ) -> str:
+        return (
+            f'films:search:query={query}'
             f':page_number={page_number}'
             f':page_size={page_size}'
         )
