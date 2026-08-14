@@ -8,7 +8,7 @@ from backoff import backoff
 
 
 class ElasticsearchLoader:
-    """Загрузка документов в Elasticsearch (индекс movies)."""
+    """Загрузка документов в Elasticsearch."""
 
     def __init__(
         self,
@@ -69,8 +69,8 @@ class ElasticsearchLoader:
         Создать индекс по схеме, если его ещё нет.
 
         Args:
-            schema: Тело настроек и mappings индекса movies
-                (settings + mappings из задания).
+            schema: Тело настроек и mappings индекса
+                (settings + mappings).
         """
         if self.client is None:
             raise RuntimeError("Elasticsearch client is not connected")
@@ -88,8 +88,7 @@ class ElasticsearchLoader:
         Загрузить пачку документов в Elasticsearch.
 
         Args:
-            documents: Документы индекса movies
-                (результат Transformer.transform_bulk).
+            documents: Документы для bulk-загрузки.
         """
         if not documents:
             return

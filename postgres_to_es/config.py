@@ -44,14 +44,23 @@ class Settings(BaseSettings):
         """Базовый URL Elasticsearch."""
         return f"http://{self.es_host}:{self.es_port}"
 
-    @property
-    def schema(self) -> dict[str, Any]:
-        """Схема индекса movies для Elasticsearch."""
-        schema_path = Path(__file__).resolve().parent / "es_schema.json"
+    def _load_schema(self, filename: str) -> dict[str, Any]:
+        """Загрузить схему индекса Elasticsearch из JSON-файла."""
+        schema_path = Path(__file__).resolve().parent / filename
         if not schema_path.exists():
             raise FileNotFoundError(f"ES schema file not found: {schema_path}")
         with schema_path.open(encoding="utf-8") as file:
             return json.load(file)
+
+    @property
+    def schema(self) -> dict[str, Any]:
+        """Схема индекса movies для Elasticsearch."""
+        return self._load_schema("es_schema.json")
+
+    @property
+    def genres_schema(self) -> dict[str, Any]:
+        """Схема индекса genres для Elasticsearch."""
+        return self._load_schema("es_genres_schema.json")
 
 
 @lru_cache

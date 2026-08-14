@@ -12,7 +12,7 @@ from backoff import backoff
 
 @dataclass(frozen=True)
 class ExtractBatch:
-    """Результат одной пачки инкрементальной выгрузки."""
+    """Результат одной пачки инкрементальной выгрузки фильмов."""
 
     film_ids: list[UUID] = field(default_factory=list)
     state_updates: dict[str, str] = field(default_factory=dict)
@@ -20,6 +20,19 @@ class ExtractBatch:
     @property
     def has_changes(self) -> bool:
         """Есть ли изменения по film_work / person / genre."""
+        return bool(self.state_updates)
+
+
+@dataclass(frozen=True)
+class GenreExtractBatch:
+    """Результат одной пачки инкрементальной выгрузки жанров."""
+
+    genre_ids: list[UUID] = field(default_factory=list)
+    state_updates: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def has_changes(self) -> bool:
+        """Есть ли изменения по жанрам в фильмах."""
         return bool(self.state_updates)
 
 
@@ -344,3 +357,64 @@ class PostgresExtractor:
             ).isoformat()
 
         return ExtractBatch(film_ids=list(film_ids), state_updates=state_updates)
+
+    @backoff(before_retry=lambda self, *_a, **_k: self._reconnect())
+    def extract_genres_by_ids(
+        self,
+        genre_ids: list[UUID],
+    ) -> list[dict[str, Any]]:
+        """
+        Получить полные данные жанров для загрузки в Elasticsearch.
+
+        Берёт только жанры, связанные хотя бы с одним фильмом.
+
+        Args:
+            genre_ids: Идентификаторы жанров.
+
+        Returns:
+            Список словарей с данными, достаточными для Transformer.
+        """
+        if not genre_ids:
+            return []
+
+        query = """
+            SELECT g.id, g.name, g.description
+            FROM genre AS g
+            INNER JOIN genre_film_work AS gfw ON g.id = gfw.genre_id
+            WHERE g.id = ANY(%s)
+            GROUP BY g.id;
+        """
+        with self.conn.cursor() as cursor:
+            cursor.execute(query, (list(genre_ids),))
+            return cursor.fetchall()
+
+    def extract_changed_genres(
+        self,
+        genres_index_modified: str,
+        limit: int | None = None,
+    ) -> GenreExtractBatch:
+        """
+        Собрать пачку жанров, затронутых изменениями в PG.
+
+        Args:
+            genres_index_modified: Курсор modified для индекса genres.
+            limit: Размер пачки; по умолчанию self.batch_size.
+
+        Returns:
+            GenreExtractBatch с genre_ids и state_updates.
+        """
+        modified_genres = self.extract_modified_genres(
+            genres_index_modified,
+            limit=limit,
+        )
+        if not modified_genres:
+            return GenreExtractBatch()
+
+        return GenreExtractBatch(
+            genre_ids=[row["id"] for row in modified_genres],
+            state_updates={
+                "genres_index_modified": max(
+                    row["modified"] for row in modified_genres
+                ).isoformat(),
+            },
+        )
