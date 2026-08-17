@@ -36,6 +36,16 @@ class GenreService:
             return None
         return Genre(**doc['_source'])
 
+    async def get_by_names(self, names: list[str]) -> list[Genre]:
+        if not names:
+            return []
+        genres_by_name = {genre.name: genre for genre in await self.get_genres()}
+        return [
+            genres_by_name[name]
+            for name in names
+            if name in genres_by_name
+        ]
+
     async def get_genres(self) -> list[Genre]:
         cache_key = 'genres:list'
         if cached := await self._get_genres_from_cache(cache_key):

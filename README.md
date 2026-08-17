@@ -1,11 +1,86 @@
-# Проектная работа 4 спринта
+# Movies Async API
 
-**Важное сообщение для тимлида:** для ускорения проверки проекта укажите ссылку на приватный репозиторий с командной работой в файле readme и отправьте свежее приглашение на аккаунт [BlueDeep](https://github.com/BigDeepBlue).
+Асинхронный API онлайн-кинотеатра: фильмы, жанры и персоны.
 
-В папке **tasks** ваша команда найдёт задачи, которые необходимо выполнить в первом спринте второго модуля.  Обратите внимание на задачи **00_create_repo** и **01_create_basis**. Они расцениваются как блокирующие для командной работы, поэтому их необходимо выполнить как можно раньше.
+Клиенты ходят только в FastAPI. Данные читаются из Elasticsearch, ответы кешируются в Redis. PostgreSQL используется как источник для ETL, который наполняет индексы `movies`, `genres` и `persons`.
 
-Мы оценили задачи в стори поинтах, значения которых брались из [последовательности Фибоначчи](https://ru.wikipedia.org/wiki/Числа_Фибоначчи) (1,2,3,5,8,…).
+## Стек
 
-Вы можете разбить имеющиеся задачи на более маленькие, например, распределять между участниками команды не большие куски задания, а маленькие подзадачи. В таком случае не забудьте зафиксировать изменения в issues в репозитории.
+- Python, FastAPI, uvicorn
+- Elasticsearch
+- Redis
+- PostgreSQL + ETL (`postgres_to_es/`)
+- Docker Compose
 
-**От каждого разработчика ожидается выполнение минимум 40% от общего числа стори поинтов в спринте.**
+## Запуск
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+Поднимаются API, Redis, Elasticsearch, PostgreSQL (дамп `database_dump.sql`) и ETL.
+
+После первой итерации ETL:
+
+- API: http://localhost:8000
+- OpenAPI: http://localhost:8000/api/openapi
+- Elasticsearch: http://localhost:9200
+
+Логи ETL:
+
+```bash
+docker compose logs -f etl
+```
+
+Полный сброс данных:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
+
+### API локально, инфраструктура в Docker
+
+```bash
+docker compose up -d redis elasticsearch theatre-db etl
+cd src
+fastapi dev main.py
+```
+
+В `.env` для этого режима: `REDIS_HOST=127.0.0.1`, `ELASTIC_HOST=127.0.0.1`.
+
+## Эндпоинты
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/api/v1/films/` | Список фильмов (`sort`, `genre`, пагинация) |
+| GET | `/api/v1/films/search/` | Поиск фильмов |
+| GET | `/api/v1/films/{uuid}/` | Карточка фильма |
+| GET | `/api/v1/genres/` | Список жанров |
+| GET | `/api/v1/genres/{uuid}/` | Карточка жанра |
+| GET | `/api/v1/persons/search/` | Поиск персон |
+| GET | `/api/v1/persons/{uuid}/` | Карточка персоны |
+| GET | `/api/v1/persons/{uuid}/film/` | Фильмы персоны |
+
+Примеры:
+
+```bash
+curl "http://localhost:8000/api/v1/films/?sort=-imdb_rating&page_size=5"
+curl "http://localhost:8000/api/v1/films/search/?query=star&page_size=5"
+curl "http://localhost:8000/api/v1/genres/"
+curl "http://localhost:8000/api/v1/persons/search/?query=lucas&page_size=5"
+```
+
+## Структура
+
+```
+src/                 # FastAPI-приложение
+  api/v1/            # Роутеры
+  services/          # Бизнес-логика, Elasticsearch, кеш
+  models/            # Доменные модели
+  schemas/           # DTO ответов API
+  db/                # Клиенты Redis и Elasticsearch
+postgres_to_es/      # ETL Postgres → Elasticsearch
+docker-compose.yml
+```
