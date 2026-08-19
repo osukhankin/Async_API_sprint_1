@@ -48,7 +48,7 @@ class GenreService:
 
     async def get_genres(self) -> list[Genre]:
         cache_key = 'genres:list'
-        if cached := await self._get_genres_from_cache(cache_key):
+        if (cached := await self._get_genres_from_cache(cache_key)) is not None:
             return cached
 
         genres = await self._get_genres_from_elastic()

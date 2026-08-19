@@ -7,6 +7,7 @@ __pycache__/
 venv/
 .idea/
 .vscode/
+.DS_Store
 .git/
 postgres_to_es/
 tests/

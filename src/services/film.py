@@ -51,7 +51,7 @@ class FilmService:
             sort=sort,
             genre=genre,
         )
-        if cached := await self._get_films_short_from_cache(cache_key):
+        if (cached := await self._get_films_short_from_cache(cache_key)) is not None:
             return cached
 
         genre_name: str | None = None
@@ -82,7 +82,7 @@ class FilmService:
             page_size=page_size,
             query=query,
         )
-        if cached := await self._get_films_short_from_cache(cache_key):
+        if (cached := await self._get_films_short_from_cache(cache_key)) is not None:
             return cached
 
         films = await self._search_films_short_from_elastic(

@@ -48,7 +48,7 @@ class PersonService:
             page_size=page_size,
             query=query,
         )
-        if cached := await self.cache.get_typed(cache_key, PERSONS_LIST_ADAPTER):
+        if (cached := await self.cache.get_typed(cache_key, PERSONS_LIST_ADAPTER)) is not None:
             return cached
 
         persons = await self._search_persons_from_elastic(
@@ -61,7 +61,7 @@ class PersonService:
 
     async def get_person_films(self, person_id: str) -> list[FilmShort] | None:
         cache_key = self._person_films_cache_key(person_id)
-        if cached := await self.cache.get_typed(cache_key, FILMS_LIST_ADAPTER):
+        if (cached := await self.cache.get_typed(cache_key, FILMS_LIST_ADAPTER)) is not None:
             return cached
 
         person = await self.get_by_id(person_id)
