@@ -2,6 +2,7 @@ from http import HTTPStatus
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from core.pagination import Pagination
 from schemas.film import FilmListItem, FilmResponse
 from services.film import FilmService, get_film_service
 
@@ -16,13 +17,11 @@ router = APIRouter(tags=['Фильмы'])
 )
 async def films_search(
     film_service: FilmService = Depends(get_film_service),
-    page_number: int = Query(1, ge=1, description='Номер страницы'),
-    page_size: int = Query(50, ge=1, le=100, description='Размер страницы'),
+    pagination: Pagination = Depends(),
     query: str = Query(..., min_length=1, description='Поиск по частичному совпадению имени фильма'),
 ) -> list[FilmListItem]:
     items = await film_service.search_films(
-        page_number=page_number,
-        page_size=page_size,
+        pagination=pagination,
         query=query,
     )
     return [FilmListItem.model_validate(film) for film in items]
@@ -36,8 +35,7 @@ async def films_search(
 )
 async def films_list(
     film_service: FilmService = Depends(get_film_service),
-    page_number: int = Query(1, ge=1, description='Номер страницы'),
-    page_size: int = Query(50, ge=1, le=100, description='Размер страницы'),
+    pagination: Pagination = Depends(),
     sort: str = Query(
         '-imdb_rating',
         description='Сортировка: imdb_rating (asc) или -imdb_rating (desc)',
@@ -49,8 +47,7 @@ async def films_list(
     ),
 ) -> list[FilmListItem]:
     items = await film_service.get_films(
-        page_number=page_number,
-        page_size=page_size,
+        pagination=pagination,
         sort=sort,
         genre=genre,
     )

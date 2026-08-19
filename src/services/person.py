@@ -5,6 +5,7 @@ from elasticsearch import AsyncElasticsearch, NotFoundError
 from fastapi import Depends
 from pydantic import TypeAdapter
 
+from core.pagination import Pagination
 from db.elastic import get_elastic
 from models.film import FilmShort
 from models.person import PersonFull
@@ -39,21 +40,20 @@ class PersonService:
 
     async def search_persons(
         self,
-        page_number: int,
-        page_size: int,
+        pagination: Pagination,
         query: str,
     ) -> list[PersonFull]:
         cache_key = self._persons_search_cache_key(
-            page_number=page_number,
-            page_size=page_size,
+            page_number=pagination.page_number,
+            page_size=pagination.page_size,
             query=query,
         )
         if (cached := await self.cache.get_typed(cache_key, PERSONS_LIST_ADAPTER)) is not None:
             return cached
 
         persons = await self._search_persons_from_elastic(
-            from_=(page_number - 1) * page_size,
-            size=page_size,
+            from_=pagination.offset,
+            size=pagination.page_size,
             query=query,
         )
         await self.cache.set_typed(cache_key, PERSONS_LIST_ADAPTER, persons)

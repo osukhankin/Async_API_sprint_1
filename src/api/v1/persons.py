@@ -2,6 +2,7 @@ from http import HTTPStatus
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from core.pagination import Pagination
 from schemas.film import FilmListItem
 from schemas.person import PersonResponse
 from services.person import PersonService, get_person_service
@@ -17,13 +18,11 @@ router = APIRouter(tags=['Персоны'])
 )
 async def persons_search(
     person_service: PersonService = Depends(get_person_service),
-    page_number: int = Query(1, ge=1, description='Номер страницы'),
-    page_size: int = Query(50, ge=1, le=100, description='Размер страницы'),
+    pagination: Pagination = Depends(),
     query: str = Query(..., min_length=1, description='Поиск по частичному совпадению имени'),
 ) -> list[PersonResponse]:
     items = await person_service.search_persons(
-        page_number=page_number,
-        page_size=page_size,
+        pagination=pagination,
         query=query,
     )
     return [PersonResponse.model_validate(person) for person in items]

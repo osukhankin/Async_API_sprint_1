@@ -5,6 +5,7 @@ from elasticsearch import AsyncElasticsearch, NotFoundError
 from fastapi import Depends
 from pydantic import TypeAdapter
 
+from core.pagination import Pagination
 from db.elastic import get_elastic
 from models.film import Film, FilmShort
 from services.cache import CacheService, get_cache_service
@@ -40,14 +41,13 @@ class FilmService:
 
     async def get_films(
         self,
-        page_number: int,
-        page_size: int,
+        pagination: Pagination,
         sort: str,
         genre: str | None = None,
     ) -> list[FilmShort]:
         cache_key = self._films_list_cache_key(
-            page_number=page_number,
-            page_size=page_size,
+            page_number=pagination.page_number,
+            page_size=pagination.page_size,
             sort=sort,
             genre=genre,
         )
@@ -63,8 +63,8 @@ class FilmService:
             genre_name = found_genre.name
 
         films = await self._search_films_short_from_elastic(
-            from_=(page_number - 1) * page_size,
-            size=page_size,
+            from_=pagination.offset,
+            size=pagination.page_size,
             genre=genre_name,
             sort=sort,
         )
@@ -73,21 +73,20 @@ class FilmService:
 
     async def search_films(
         self,
-        page_number: int,
-        page_size: int,
+        pagination: Pagination,
         query: str,
     ) -> list[FilmShort]:
         cache_key = self._films_search_cache_key(
-            page_number=page_number,
-            page_size=page_size,
+            page_number=pagination.page_number,
+            page_size=pagination.page_size,
             query=query,
         )
         if (cached := await self._get_films_short_from_cache(cache_key)) is not None:
             return cached
 
         films = await self._search_films_short_from_elastic(
-            from_=(page_number - 1) * page_size,
-            size=page_size,
+            from_=pagination.offset,
+            size=pagination.page_size,
             query=query,
         )
         await self._set_films_short_to_cache(cache_key, films)
