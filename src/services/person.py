@@ -3,7 +3,7 @@ from typing import Optional
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from fastapi import Depends
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from core.pagination import Pagination
 from db.elastic import get_elastic
@@ -13,7 +13,10 @@ from services.cache import CacheService, get_cache_service
 from services.film import FilmService, get_film_service
 
 PERSONS_LIST_ADAPTER = TypeAdapter(list[PersonFull])
-FILMS_LIST_ADAPTER = TypeAdapter(list[FilmShort])
+
+
+class PersonFilmsCache(BaseModel):
+    films: list[FilmShort] | None
 
 
 class PersonService:
@@ -61,15 +64,17 @@ class PersonService:
 
     async def get_person_films(self, person_id: str) -> list[FilmShort] | None:
         cache_key = self._person_films_cache_key(person_id)
-        if (cached := await self.cache.get_typed(cache_key, FILMS_LIST_ADAPTER)) is not None:
-            return cached
+        cached = await self.cache.get_model(cache_key, PersonFilmsCache)
+        if cached is not None:
+            return cached.films
 
         person = await self.get_by_id(person_id)
-        if not person:
+        if person is None:
+            await self.cache.set_model(cache_key, PersonFilmsCache(films=None))
             return None
 
         films = await self.film_service.get_films_by_ids([film.id for film in person.films])
-        await self.cache.set_typed(cache_key, FILMS_LIST_ADAPTER, films)
+        await self.cache.set_model(cache_key, PersonFilmsCache(films=films))
         return films
 
     async def _get_person_from_elastic(self, person_id: str) -> PersonFull | None:
