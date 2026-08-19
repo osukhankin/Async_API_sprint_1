@@ -5,9 +5,8 @@ from fastapi import Depends
 from pydantic import BaseModel, TypeAdapter
 from redis.asyncio import Redis
 
+from core.config import settings
 from db.redis import get_redis
-
-CACHE_EXPIRE_IN_SECONDS = 60 * 5  # 5 минут
 
 T = TypeVar('T')
 ModelT = TypeVar('ModelT', bound=BaseModel)
@@ -21,7 +20,7 @@ class CacheService:
         return await self.redis.get(key)
 
     async def set(self, key: str, value: str | bytes) -> None:
-        await self.redis.set(key, value, CACHE_EXPIRE_IN_SECONDS)
+        await self.redis.set(key, value, settings.cache_expire_in_seconds)
 
     async def get_model(self, key: str, model: type[ModelT]) -> ModelT | None:
         data = await self.get(key)

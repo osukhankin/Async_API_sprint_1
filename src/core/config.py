@@ -1,17 +1,29 @@
-import os
 from logging import config as logging_config
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.logger import LOGGING
 
 logging_config.dictConfig(LOGGING)
 
-PROJECT_NAME = os.getenv('PROJECT_NAME', 'movies')
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-REDIS_HOST = os.getenv('REDIS_HOST', '127.0.0.1')
-REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
 
-ELASTIC_HOST = os.getenv('ELASTIC_HOST', '127.0.0.1')
-ELASTIC_PORT = int(os.getenv('ELASTIC_PORT', 9200))
-ELASTIC_SCHEMA = os.getenv('ELASTIC_SCHEMA', 'http://')
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=BASE_DIR.parent / '.env',
+        env_file_encoding='utf-8',
+        extra='ignore',
+    )
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    project_name: str = 'movies'
+    redis_host: str = '127.0.0.1'
+    redis_port: int = 6379
+    elastic_host: str = '127.0.0.1'
+    elastic_port: int = 9200
+    elastic_schema: str = 'http://'
+    cache_expire_in_seconds: int = 60 * 5
+
+
+settings = Settings()
